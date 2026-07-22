@@ -14,13 +14,6 @@ pr:
   branches:
     include:
     - '*'
-schedules:
-- cron: '0 8 * * 1'
-  displayName: Weekly Monday build
-  branches:
-    include:
-    - main
-  always: true
 
 variables:
 - name: Codeql.Enabled
