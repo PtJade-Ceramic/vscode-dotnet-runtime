@@ -17,7 +17,7 @@ pr:
     - '*'
 schedules:
 - cron: '0 8 * * 1'
-  displayName: Weekly Monday build
+  displayName: Weekly build
   branches:
     include:
     - main
