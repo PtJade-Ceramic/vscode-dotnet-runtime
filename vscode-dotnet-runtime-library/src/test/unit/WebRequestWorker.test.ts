@@ -12,6 +12,7 @@ import
 {
     DotnetFallbackInstallScriptUsed,
     DotnetInstallScriptAcquisitionError,
+    OfflineDetectionLogicTriggered,
     WebRequestTime,
 } from '../../EventStream/EventStreamEvents';
 import
@@ -34,6 +35,29 @@ chai.use(chaiAsPromised);
 const maxTimeoutTime = 10000;
 // Website used for the sake of it returning the same response always (tm)
 const staticWebsiteUrl = 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/2.1/releases.json';
+
+// A WebRequestWorkerSingleton whose hostname resolution for isOnline() is fully controlled by the test,
+// so we don't depend on real DNS (which is exactly what the c-ares resolver incorrectly fails on).
+class MockOnlineWebRequestWorker extends WebRequestWorkerSingleton
+{
+    public resolvedAddress: string | undefined = '1.2.3.4';
+    public shouldThrow = false;
+
+    constructor()
+    {
+        super();
+        const _ = WebRequestWorkerSingleton.getInstance(); // cause super to exist
+    }
+
+    protected async resolveHostnameForOnlineCheck(hostName: string, timeoutMs: number): Promise<string | undefined>
+    {
+        if (this.shouldThrow)
+        {
+            throw new Error('ENOTFOUND test');
+        }
+        return this.resolvedAddress;
+    }
+}
 
 suite('WebRequestWorker Unit Tests', function ()
 {
@@ -134,6 +158,49 @@ suite('WebRequestWorker Unit Tests', function ()
         assert.equal(timerEvents?.finished, 'true', 'The timed event time finished');
         assert.isTrue(Number(timerEvents?.durationMs) > 0, 'The timed event time is > 0');
         assert.isTrue(String(timerEvents?.status).startsWith('2'), 'The timed event has a status 2XX');
+    });
+
+    test('isOnline returns true when the hostname resolves', async () =>
+    {
+        const eventStream = new MockEventStream();
+        const worker = new MockOnlineWebRequestWorker();
+        worker.resolvedAddress = '1.2.3.4';
+        assert.isTrue(await worker.isOnline(600, eventStream));
+        assert.isEmpty(eventStream.events.filter(event => event instanceof OfflineDetectionLogicTriggered));
+    });
+
+    test('isOnline returns false and reports an event when the hostname does not resolve', async () =>
+    {
+        const eventStream = new MockEventStream();
+        const worker = new MockOnlineWebRequestWorker();
+        worker.resolvedAddress = undefined;
+        assert.isFalse(await worker.isOnline(600, eventStream));
+        assert.exists(eventStream.events.find(event => event instanceof OfflineDetectionLogicTriggered));
+    });
+
+    test('isOnline reports an event when DNS lookup errors', async () =>
+    {
+        const eventStream = new MockEventStream();
+        const worker = new MockOnlineWebRequestWorker();
+        worker.shouldThrow = true;
+        assert.isFalse(await worker.isOnline(600, eventStream));
+        assert.exists(eventStream.events.find(event => event instanceof OfflineDetectionLogicTriggered));
+    });
+
+    test('isOnline returns false when DOTNET_INSTALL_TOOL_OFFLINE is set', async () =>
+    {
+        const eventStream = new MockEventStream();
+        const worker = new MockOnlineWebRequestWorker();
+        worker.resolvedAddress = '1.2.3.4';
+        process.env.DOTNET_INSTALL_TOOL_OFFLINE = '1';
+        try
+        {
+            assert.isFalse(await worker.isOnline(600, eventStream));
+        }
+        finally
+        {
+            delete process.env.DOTNET_INSTALL_TOOL_OFFLINE;
+        }
     });
 });
 
