@@ -222,11 +222,12 @@ export class WebRequestWorkerSingleton
 
     /**
      * @returns The data from a web request that was hopefully cached. Even if it wasn't cached, we will make an attempt to get the data.
+     * @param requestOptions Optional per-request axios options (e.g. cache settings) merged into the request.
      * @remarks This function is no longer needed as the data is cached either way if you call makeWebRequest, but it was kept to prevent breaking APIs.
      */
-    public async getCachedData(url: string, ctx: IAcquisitionWorkerContext, retriesCount = 2): Promise<string | undefined>
+    public async getCachedData(url: string, ctx: IAcquisitionWorkerContext, retriesCount = 2, requestOptions?: object): Promise<string | undefined>
     {
-        return this.makeWebRequest(url, ctx, true, retriesCount);
+        return this.makeWebRequest(url, ctx, true, retriesCount, requestOptions);
     }
 
     private reportTimeAnalytics(response: any, options: any, url: string, ctx: IAcquisitionWorkerContext, manualFinalTime: bigint | null = null): void
@@ -469,13 +470,14 @@ export class WebRequestWorkerSingleton
      *
      * @param throwOnError Should we throw if the connection fails, there's a bad URL passed in, or something else goes wrong?
      * @param numRetries The number of retry attempts if the url is not giving a good response.
+     * @param requestOptions Optional per-request axios options (e.g. cache settings) merged into the request.
      * @returns The data returned from a get request to the url. It may be of string type, but it may also be of another type if the return result is convert-able (e.g. JSON.)
      * @remarks protected for ease of testing.
      */
-    protected async makeWebRequest(url: string, ctx: IAcquisitionWorkerContext, throwOnError: boolean, numRetries: number): Promise<string | undefined>
+    protected async makeWebRequest(url: string, ctx: IAcquisitionWorkerContext, throwOnError: boolean, numRetries: number, requestOptions?: object): Promise<string | undefined>
     {
         ctx.eventStream.post(new WebRequestInitiated(`Making Web Request For ${url}`));
-        const options = await this.getAxiosOptions(ctx, numRetries);
+        const options = { ...await this.getAxiosOptions(ctx, numRetries), ...requestOptions };
 
         try
         {

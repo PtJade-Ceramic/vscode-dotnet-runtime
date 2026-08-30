@@ -138,13 +138,16 @@ suite('WebRequestWorker Unit Tests', function ()
         const uri = 'https://microsoft.com';
 
         const webWorker = new MockTrackingWebRequestWorker(true);
-        const uncachedResult = await webWorker.getCachedData(uri, ctx);
-        await new Promise(resolve => setTimeout(resolve, 120000));
-        const cachedResult = await webWorker.getCachedData(uri, ctx);
+        // Force a short, deterministic cache TTL and stop interpreting the server's cache headers
+        // (which set ~10 minute max-age and would make the entry outlive the test's 120s wait).
+        const cacheOptions = { cache: { ttl: 2000, interpretHeader: false } };
+        const uncachedResult = await webWorker.getCachedData(uri, ctx, 2, cacheOptions);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        const cachedResult = await webWorker.getCachedData(uri, ctx, 2, cacheOptions);
         assert.exists(uncachedResult);
         const requestCount = webWorker.getRequestCount();
         assert.isAtLeast(requestCount, 2);
-    }).timeout((maxTimeoutTime * 7) + 120000);
+    }).timeout(maxTimeoutTime * 7);
 
     test('It actually times requests', async () =>
     {
@@ -158,7 +161,7 @@ suite('WebRequestWorker Unit Tests', function ()
         assert.equal(timerEvents?.finished, 'true', 'The timed event time finished');
         assert.isTrue(Number(timerEvents?.durationMs) > 0, 'The timed event time is > 0');
         assert.isTrue(String(timerEvents?.status).startsWith('2'), 'The timed event has a status 2XX');
-    });
+    }).timeout(maxTimeoutTime);
 
     test('isOnline returns true when the hostname resolves', async () =>
     {
